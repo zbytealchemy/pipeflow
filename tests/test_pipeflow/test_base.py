@@ -1,7 +1,7 @@
 """Test base pipe functionality."""
 import pandas as pd
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 from pipeflow import DataFramePipe, DataFramePipeConfig
 

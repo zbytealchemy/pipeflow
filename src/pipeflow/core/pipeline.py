@@ -1,6 +1,6 @@
 """Pipeline implementation for composing pipes."""
 import asyncio
-from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TypeVar, cast
 
 from pipeflow.core.pipe import BasePipe, InputType, OutputType
 
@@ -41,8 +41,10 @@ class Pipeline(BasePipe[InputType, OutputType]):
         Returns:
             Processed output data
         """
-        result = data
+        result: Any = data
         for pipe in self.pipes:
+            if result is None:
+                raise ValueError("Input data cannot be None")
             result = await pipe(result)
         return cast(OutputType, result)
 
@@ -58,7 +60,7 @@ class Pipeline(BasePipe[InputType, OutputType]):
         Raises:
             PipeError: If any pipe fails
         """
-        tasks = [self.process(item) for item in data]
+        tasks: List[Awaitable[Any]] = [self.process(item) for item in data]
         return await asyncio.gather(*tasks)
 
     async def execute_conditional(

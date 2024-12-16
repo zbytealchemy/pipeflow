@@ -1,6 +1,5 @@
 """Tests for AWS integrations."""
 import asyncio
-from typing import AsyncIterator
 
 import aioboto3
 import pytest

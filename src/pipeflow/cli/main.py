@@ -1,104 +1,24 @@
 """Command-line interface for Pipeflow."""
 import asyncio
 import json
+from datetime import timedelta
 from pathlib import Path
-from typing import (
-    Any,
-    AsyncIterator,
-    Dict,
-    List,
-    Optional,
-    Protocol,
-    Type,
-    TypeVar,
-    Union,
-    cast,
-    overload,
-    runtime_checkable,
-)
+from typing import Any, AsyncGenerator, Dict, Optional
 
 import click
 from rich.console import Console
 from rich.table import Table
 
-from pipeflow.core import BasePipe, ConfigurablePipe, PipeConfig
+from pipeflow.core import BasePipe, PipeConfig
 from pipeflow.streams import Stream, StreamConfig
 
-T = TypeVar("T")
-U = TypeVar("U")
-InputType = Union[Dict[str, Any], List[Dict[str, Any]]]
-OutputType = Union[Dict[str, Any], List[Dict[str, Any]]]
-
 console = Console()
-
-
-@runtime_checkable
-class PipeProtocol(Protocol):
-    """Protocol for pipe objects to help with type checking."""
-
-    async def __call__(self, data: InputType) -> OutputType:
-        """Process data through the pipe.
-
-        Args:
-            data: Input data to process
-
-        Returns:
-            Processed output data
-        """
-
-    async def process(self, data: InputType) -> OutputType:
-        """Process data through the pipe.
-
-        Args:
-            data: Input data to process
-
-        Returns:
-            Processed output data
-        """
 
 
 @click.group()
 def cli() -> None:
     """Pipeflow CLI - A type-safe data processing pipeline framework."""
-
-
-@overload
-def _create_pipe(
-    pipe_class: Type[ConfigurablePipe[InputType, OutputType, Any]],
-    pipe_config: PipeConfig,
-) -> ConfigurablePipe[InputType, OutputType, Any]:
-    """Create a configurable pipe instance.
-
-    Args:
-        pipe_class: Pipe class to create instance of
-        pipe_config: Configuration for the pipe
-
-    Returns:
-        Configured pipe instance
-    """
-
-
-@overload
-def _create_pipe(
-    pipe_class: Type[BasePipe[InputType, OutputType]],
-    pipe_config: Optional[PipeConfig] = None,
-) -> BasePipe[InputType, OutputType]:
-    ...
-
-
-def _create_pipe(
-    pipe_class: Union[
-        Type[ConfigurablePipe[InputType, OutputType, Any]],
-        Type[BasePipe[InputType, OutputType]],
-    ],
-    pipe_config: Optional[PipeConfig] = None,
-) -> BasePipe[InputType, OutputType]:
-    """Create a pipe instance with proper typing."""
-    if issubclass(pipe_class, ConfigurablePipe):
-        if pipe_config is None:
-            raise ValueError("Config is required for ConfigurablePipe")
-        return cast(BasePipe[InputType, OutputType], pipe_class(pipe_config))
-    return pipe_class()
+    pass
 
 
 @cli.command()
@@ -128,25 +48,23 @@ def run(
     input_file: str,
     output_file: str,
     batch_size: Optional[int],
-    window_size: Optional[float],
+    window_size: float,
 ) -> None:
     """Run a pipeline from a configuration file."""
     try:
-        # Load configuration
-        config = json.loads(Path(config_file).read_text(encoding="utf-8"))
+        config = json.loads(Path(config_file).read_text())
         pipe_config = PipeConfig(**config.get("pipe_config", {}))
 
-        # Create stream config with defaults if not provided
-        stream_config_dict = config.get("stream_config", {})
-        if batch_size is not None:
-            stream_config_dict["batch_size"] = batch_size
-        if window_size is not None:
-            stream_config_dict["window_size"] = window_size
-        stream_config = StreamConfig(**stream_config_dict)
+        batch_size = 1 if not batch_size else batch_size
+        stream_config = StreamConfig(
+            batch_size=batch_size,
+            window_size=timedelta(window_size),
+            **config.get("stream_config", {}),
+        )
 
         # Import and create pipe
         pipe_class = _import_class(config["pipe_class"])
-        pipe = _create_pipe(pipe_class, pipe_config)
+        pipe = pipe_class(pipe_config)
 
         # Process data
         asyncio.run(_process_data(pipe, input_file, output_file, stream_config))
@@ -184,26 +102,24 @@ def list_pipes() -> None:
 @cli.command()
 @click.argument("pipe_name")
 def info(pipe_name: str) -> None:
-    """Show detailed information about a pipe.
-
-    Args:
-        pipe_name: Name of the pipe to show information for
-    """
+    """Show detailed information about a pipe."""
     try:
         pipe_class = _find_pipe(pipe_name)
-        if pipe_class is None:
-            console.print(f"[red]Pipe '{pipe_name}' not found[/red]")
-            raise click.Abort()
+        if not pipe_class:
+            raise click.BadParameter(f"Pipe '{pipe_name}' not found")
 
-        pipe_details = _get_pipe_info(pipe_class)
-        table = Table(title=f"Pipe: {pipe_name}")
-        table.add_column("Property", style="cyan")
-        table.add_column("Value", style="green")
+        info = _get_pipe_info(pipe_class)
 
-        for key, value in pipe_details.items():
-            table.add_row(key, str(value))
+        console.print(f"\n[cyan]Pipe: {info['name']}[/cyan]")
+        console.print(f"[green]Module:[/green] {info['module']}")
+        console.print(f"\n{info.get('description', '')}")
 
-        console.print(table)
+        if info.get("config_fields"):
+            console.print("\n[yellow]Configuration Fields:[/yellow]")
+            for field, details in info["config_fields"].items():
+                console.print(f"  {field}: {details['type']}")
+                if details.get("description"):
+                    console.print(f"    {details['description']}")
 
     except Exception as e:
         console.print(f"[red]Error getting pipe info: {str(e)}[/red]")
@@ -211,30 +127,27 @@ def info(pipe_name: str) -> None:
 
 
 async def _process_data(
-    pipe: BasePipe[InputType, OutputType],
-    input_file: str,
-    output_file: str,
-    config: StreamConfig,
+    pipe: BasePipe, input_file: str, output_file: str, config: StreamConfig
 ) -> None:
     """Process data through a pipe."""
 
-    async def data_source() -> AsyncIterator[Dict[str, Any]]:
-        with open(input_file, "r", encoding="utf-8") as f:
+    async def data_source() -> AsyncGenerator[Dict[str, Any], None]:
+        with open(input_file) as f:
             for line in f:
                 yield json.loads(line)
 
     stream = Stream(data_source(), config=config)
 
-    with open(output_file, "w", encoding="utf-8") as f:
+    with open(output_file, "w") as f:
         async for result in stream.process(pipe):
             f.write(json.dumps(result) + "\n")
 
 
-def _import_class(class_path: str) -> Type[BasePipe[InputType, OutputType]]:
+def _import_class(class_path: str) -> type:
     """Import a class from a string path."""
     module_path, class_name = class_path.rsplit(".", 1)
     module = __import__(module_path, fromlist=[class_name])
-    return cast(Type[BasePipe[InputType, OutputType]], getattr(module, class_name))
+    return type(getattr(module, class_name))
 
 
 def _discover_pipes() -> list[Dict[str, Any]]:
@@ -244,24 +157,14 @@ def _discover_pipes() -> list[Dict[str, Any]]:
     return []
 
 
-def _find_pipe(
-    pipe_name: str,
-) -> Optional[Type[BasePipe[InputType, OutputType]]]:
-    """Find a pipe class by name.
-
-    Args:
-        pipe_name: Name of the pipe to find
-
-    Returns:
-        The pipe class if found, None otherwise
-    """
-    for pipe_info in _discover_pipes():
-        if pipe_info["name"] == pipe_name:
-            return _import_class(pipe_info["module"])
+def _find_pipe(name: str) -> Optional[type]:
+    """Find a pipe class by name."""
+    # This is a placeholder. In a real implementation,
+    # we would look up the pipe class by name.
     return None
 
 
-def _get_pipe_info(pipe_class: Type[BasePipe[InputType, OutputType]]) -> Dict[str, Any]:
+def _get_pipe_info(pipe_class: type) -> Dict[str, Any]:
     """Get information about a pipe class."""
     return {
         "name": pipe_class.__name__,

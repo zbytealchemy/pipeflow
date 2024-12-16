@@ -1,13 +1,16 @@
 """RabbitMQ integration for Pipeflow."""
 import asyncio
-import json
-from datetime import datetime, timedelta
-from typing import Any, AsyncIterator, Dict, Optional, Union, cast
+from datetime import datetime
+from typing import Any, AsyncIterator, Dict, Optional, cast
 
 import aio_pika
-from aio_pika.abc import AbstractIncomingMessage, AbstractRobustConnection, AbstractChannel, AbstractQueue
-from aio_pika.pool import Pool
-from pydantic import BaseModel, ConfigDict
+from aio_pika.abc import (
+    AbstractChannel,
+    AbstractIncomingMessage,
+    AbstractQueue,
+    AbstractRobustConnection,
+)
+from pydantic import ConfigDict, field_validator
 
 from ..core.message import Message
 from ..core.pipe import BasePipe, PipeConfig
@@ -55,6 +58,19 @@ class RabbitMQMessage(Message):
     type: Optional[str] = None
     user_id: Optional[str] = None
     app_id: Optional[str] = None
+    properties: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    @field_validator("body", mode="before")
+    def convert_to_str(cls, value, values):
+        """
+        Ensure that the `body` field is always a string.
+        If `body` is bytes, decode it using the specified content_encoding or utf-8.
+        """
+        if isinstance(value, bytes):
+            encoding = values.get("content_encoding", "utf-8") or "utf-8"
+            return value.decode(encoding)
+        return value
 
     @classmethod
     def from_aio_pika(cls, message: AbstractIncomingMessage) -> "RabbitMQMessage":
@@ -79,16 +95,26 @@ class RabbitMQMessage(Message):
             type=message.type,
             user_id=message.user_id,
             app_id=message.app_id,
-            value=message.body
+            value=message.body,
         )
 
     def to_aio_pika_message(self) -> aio_pika.Message:
         """Convert to an aio_pika message."""
+
+        # need to convert message to bytes
+        body_as_bytes = (
+            self.body.encode(self.content_encoding or "utf-8")
+            if isinstance(self.body, str)
+            else self.body
+        )
+
         # Convert expiration from string to float if present
-        expiration_float: Optional[float] = float(self.expiration) if self.expiration is not None else None
-        
+        expiration_float: Optional[float] = (
+            float(self.expiration) if self.expiration is not None else None
+        )
+
         return aio_pika.Message(
-            body=self.body,
+            body=body_as_bytes,
             content_type=self.content_type,
             content_encoding=self.content_encoding,
             headers=self.headers,
@@ -98,7 +124,9 @@ class RabbitMQMessage(Message):
             reply_to=self.reply_to,
             expiration=expiration_float,
             message_id=self.message_id,
-            timestamp=datetime.fromtimestamp(self.timestamp) if self.timestamp else None,
+            timestamp=datetime.fromtimestamp(self.timestamp)
+            if self.timestamp
+            else None,
             type=self.type,
             user_id=self.user_id,
             app_id=self.app_id,
@@ -168,44 +196,45 @@ class RabbitMQSourcePipe(BasePipe[None, RabbitMQMessage]):
             )
 
     async def process_stream(self) -> AsyncIterator[RabbitMQMessage]:
-        """Process a stream of messages from RabbitMQ.
-
-        Yields:
-            RabbitMQ messages
-
-        Raises:
-            RuntimeError: If queue is not initialized
-            Exception: If there is an error processing messages
-        """
+        """Process a stream of messages from RabbitMQ."""
         if not self._channel or not self._queue:
             await self.start()
-            if not self._channel or not self._queue:
-                raise RuntimeError("Channel or queue not initialized")
 
         async with self._queue.iterator() as queue_iter:
             async for message in queue_iter:
+                raw_message: AbstractIncomingMessage = cast(AbstractIncomingMessage, message)
                 try:
-                    yield RabbitMQMessage.from_aio_pika(message)
-                    await message.ack()
+                    rabbit_message = RabbitMQMessage.from_aio_pika(raw_message)
+                    yield rabbit_message
+                    await raw_message.ack()
                 except Exception as e:
-                    await message.reject(requeue=True)
-                    raise RuntimeError(f"Failed to process message: {str(e)}") from e
+                    print(f"Error processing message: {e}")
+                    await raw_message.nack(requeue=True)
 
-    async def process(self, _: None) -> RabbitMQMessage:
+    async def process(self, data: Any = None) -> Optional[RabbitMQMessage]:
         """Process a single message from RabbitMQ.
 
         Args:
             _: Not used
 
         Returns:
-            RabbitMQMessage: The next message from the queue
+            RabbitMQMessage: The next message from the queue, or None if no message is available
 
         Raises:
-            RuntimeError: If no message is available or if there is an error
+            RuntimeError: If there is an error processing the message
         """
-        async for message in self.process_stream():
-            return message
-        raise RuntimeError("No message available")
+        if not self._channel or not self._queue:
+            await self.start()
+
+        try:
+            message = await self._queue.get(timeout=1.0)
+            if message:
+                return RabbitMQMessage.from_aio_pika(message)
+            return None
+        except asyncio.TimeoutError:
+            return None
+        except Exception as e:
+            raise RuntimeError(f"Error processing message: {e}")
 
     async def stop(self) -> None:
         """Stop consuming messages from RabbitMQ."""
@@ -326,7 +355,9 @@ class RabbitMQSinkPipe(BasePipe[RabbitMQMessage, None]):
             message = data.to_aio_pika_message()
             await self._channel.default_exchange.publish(
                 message,
-                routing_key=data.routing_key or self.config.routing_key or self.config.queue,
+                routing_key=data.routing_key
+                or self.config.routing_key
+                or self.config.queue,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to send message: {str(e)}") from e

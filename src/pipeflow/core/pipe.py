@@ -46,7 +46,7 @@ class BasePipe(ABC, Generic[InputType, OutputType]):
         """Initialize base pipe."""
         self.name: Optional[str] = None
 
-    async def __call__(self, data: InputType) -> OutputType:
+    async def __call__(self, data: InputType) -> Optional[OutputType]:
         """Process data through the pipe.
 
         Args:
@@ -58,7 +58,7 @@ class BasePipe(ABC, Generic[InputType, OutputType]):
         return await self.process(data)
 
     @abstractmethod
-    async def process(self, data: InputType) -> OutputType:
+    async def process(self, data: InputType) -> Optional[OutputType]:
         """Process data through the pipe.
 
         Args:
@@ -92,7 +92,7 @@ class ConfigurablePipe(
         self.config = config
         self.name: Optional[str] = config.name or self.__class__.__name__
 
-    async def process(self, data: InputType) -> OutputType:
+    async def process(self, data: InputType) -> Optional[OutputType]:
         """Process data through the pipe.
 
         Args:

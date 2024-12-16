@@ -1,5 +1,4 @@
 """Metrics collection and monitoring for pipes."""
-import time
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 

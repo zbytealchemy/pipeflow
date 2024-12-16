@@ -3,9 +3,8 @@ import asyncio
 from typing import Any, List
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
-from pipeflow.core import ConfigurablePipe
 from pipeflow.core.dataframe import DataFramePipe, DataFramePipeConfig
 
 

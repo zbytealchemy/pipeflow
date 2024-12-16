@@ -1,12 +1,12 @@
 """AWS integrations for Pipeflow."""
 import asyncio
 import json
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
-import aioboto3  # type: ignore[import-untyped]
-from pydantic import BaseModel, ConfigDict
+import aioboto3
+from pydantic import BaseModel
 
-from pipeflow.core import BasePipe, ConfigurablePipe, PipeConfig
+from pipeflow.core import ConfigurablePipe, PipeConfig
 
 
 class SQSConfig(PipeConfig):
@@ -26,15 +26,11 @@ class SQSConfig(PipeConfig):
 class SQSMessage(BaseModel):
     """A message from SQS."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     message_id: str
-    receipt_handle: str
     body: Any
-    attributes: Optional[Dict[str, Any]] = None
-    message_attributes: Optional[Dict[str, Any]] = None
-    md5_of_body: Optional[str] = None
-    md5_of_message_attributes: Optional[str] = None
+    receipt_handle: str
+    attributes: Dict[str, Any] = {}
+    message_attributes: Dict[str, Any] = {}
 
 
 class SQSSourcePipe(ConfigurablePipe[None, SQSMessage, SQSConfig]):
@@ -72,7 +68,7 @@ class SQSSourcePipe(ConfigurablePipe[None, SQSMessage, SQSConfig]):
             await self._client.__aexit__(None, None, None)
             self._client = None
 
-    async def process(self, _: None) -> SQSMessage:
+    async def process(self, _: None) -> Optional[SQSMessage]:
         """Process a single message from SQS.
 
         This method is not typically used directly. Use process_stream instead.
@@ -82,9 +78,15 @@ class SQSSourcePipe(ConfigurablePipe[None, SQSMessage, SQSConfig]):
 
         Returns:
             A message from SQS if available, None otherwise
+
+        Raises:
+            ValueError: If no message is available
         """
+        if self._client is None:
+            await self.start()
+
         if not self._client:
-            raise RuntimeError("SQS client not initialized")
+            return None
 
         response = await self._client.receive_message(
             QueueUrl=self.config.queue_url,
@@ -94,18 +96,25 @@ class SQSSourcePipe(ConfigurablePipe[None, SQSMessage, SQSConfig]):
             MessageAttributeNames=["All"],
         )
 
-        messages = response.get("Messages", [])
-        if not messages:
-            return None  # type: ignore[return-value]
+        if "Messages" in response:
+            message = response["Messages"][0]
+            message_attributes: Dict[str, Dict[str, str]] = {}
+            raw_attrs = message.get("MessageAttributes", {})
+            for key, attr in raw_attrs.items():
+                message_attributes[key] = {
+                    "StringValue": attr["StringValue"],
+                    "DataType": attr["DataType"],
+                }
 
-        message = messages[0]
-        return SQSMessage(
-            message_id=message["MessageId"],
-            body=json.loads(message["Body"]),
-            receipt_handle=message["ReceiptHandle"],
-            attributes=message.get("Attributes", {}),
-            message_attributes=message.get("MessageAttributes", {}),
-        )
+            return SQSMessage(
+                message_id=message["MessageId"],
+                body=json.loads(message["Body"]),
+                receipt_handle=message["ReceiptHandle"],
+                attributes=message.get("Attributes", {}),
+                message_attributes=message_attributes,
+            )
+        return None
+
 
     async def process_stream(self) -> AsyncIterator[SQSMessage]:
         """Process a stream of messages from SQS.

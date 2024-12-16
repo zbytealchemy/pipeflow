@@ -1,6 +1,6 @@
 """Tests for core pipe functionality."""
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 from pipeflow.core import BasePipe, ConfigurablePipe, PipeConfig
 

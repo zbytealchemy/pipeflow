@@ -56,10 +56,10 @@ publish:  ## Publish package to PyPI
 	poetry publish
 
 docker-test:  ## Run tests in Docker
-	docker-compose run --rm pipeflow pytest tests/
+	docker compose run --rm pipeflow pytest tests/
 
 docker-up:  ## Start all Docker services for integration tests
-	docker-compose up -d localstack kafka redis
+	docker compose up -d localstack kafka redis
 
 docker-down:  ## Stop all Docker services
-	docker-compose down
+	docker compose down

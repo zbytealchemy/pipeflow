@@ -1,7 +1,6 @@
 """Tests for Kafka integration."""
 import asyncio
 import uuid
-from typing import AsyncIterator
 
 import pytest
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
@@ -9,17 +8,12 @@ from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import TopicAlreadyExistsError, UnknownTopicOrPartitionError
 
 from pipeflow.core import PipeError
-from pipeflow.integrations.kafka import (
-    KafkaConfig,
-    KafkaMessage,
-    KafkaSinkPipe,
-    KafkaSourcePipe,
-)
+from pipeflow.integrations.kafka import KafkaConfig, KafkaSinkPipe, KafkaSourcePipe
 
 
 async def wait_for_topic(config: KafkaConfig, exists: bool = True, timeout: int = 10):
     """Wait for topic to exist or not exist.
-    
+
     Args:
         config: Kafka configuration
         exists: If True, wait for topic to exist, otherwise wait for it to not exist
@@ -162,6 +156,7 @@ async def test_kafka_stream_processing(kafka_config):
 
         # Receive messages with timeout
         received = []
+
         async def receive_messages():
             async for message in source.process_stream():
                 received.append(message.value)

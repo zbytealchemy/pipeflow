@@ -1,13 +1,22 @@
 """Test configuration and fixtures."""
 import asyncio
 import os
-from typing import AsyncGenerator, Generator
+import warnings
+from typing import Any, AsyncGenerator, Callable, Generator, List, Optional
 
 import aio_pika
 import boto3
 import pytest
 from aiokafka import AIOKafkaProducer
+from pydantic import ConfigDict
+from pydantic._internal._config import PydanticDeprecatedSince20
 from redis.asyncio import Redis
+
+from pipeflow import BasePipe
+from pipeflow.streams import Stream, StreamConfig
+
+# Supress PydanticDeprecatedSince20 warning
+warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
 
 
 @pytest.fixture(scope="session")
@@ -66,23 +75,6 @@ def aws_sqs_client() -> Generator[boto3.client, None, None]:
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
     )
     yield client
-
-
-"""Test fixtures for pipeflow."""
-
-import asyncio
-import warnings
-from typing import Any, AsyncIterator, Callable, List, Optional
-
-import pytest
-from pydantic import BaseModel, ConfigDict
-from pydantic._internal._config import PydanticDeprecatedSince20
-
-# Supress PydanticDeprecatedSince20 warning
-warnings.filterwarnings("ignore", category=PydanticDeprecatedSince20)
-
-from pipeflow.core import BasePipe
-from pipeflow.streams import Stream, StreamConfig
 
 
 class MockPipe(BasePipe[Any, Any]):

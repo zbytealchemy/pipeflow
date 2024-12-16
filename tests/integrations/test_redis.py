@@ -1,6 +1,5 @@
 """Integration tests for Redis pipes."""
 import asyncio
-from typing import AsyncIterator
 
 import pytest
 from redis.asyncio import Redis

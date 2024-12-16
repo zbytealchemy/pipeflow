@@ -3,6 +3,8 @@ import asyncio
 from dataclasses import dataclass
 from typing import List, Optional
 
+from pydantic import ConfigDict
+
 from pipeflow import BasePipe, ConfigurablePipe, PipeConfig
 
 

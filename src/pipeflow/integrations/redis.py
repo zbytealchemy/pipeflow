@@ -1,16 +1,16 @@
 """Redis integration for pipeflow."""
 import asyncio
 import json
-from typing import Any, AsyncIterator, Dict, List, Optional, Union, cast, TypedDict
+from typing import Any, AsyncIterator, Dict, List, Optional, TypedDict
 
-from redis.asyncio import Redis
-from redis.asyncio.client import Pipeline
-from redis.asyncio.connection import ConnectionPool, Connection
-from redis.exceptions import RedisError
 from pydantic import ConfigDict
+from redis.asyncio import Redis
+from redis.asyncio.connection import ConnectionPool
+from redis.exceptions import RedisError
 
 from ..core.message import Message
 from ..core.pipe import BasePipe, PipeConfig, PipeError
+
 
 class RedisConfig(PipeConfig):
     """Configuration for Redis pipes."""
@@ -35,6 +35,7 @@ class RedisConfig(PipeConfig):
     consumer_name: Optional[str] = None
     max_entries: int = 1000
 
+
 class RedisMessage(Message):
     """A message from Redis."""
 
@@ -44,8 +45,10 @@ class RedisMessage(Message):
     source: str
     metadata: Optional[Dict[str, Any]] = None
 
+
 class RedisConnectionKwargs(TypedDict, total=False):
     """Type hints for Redis connection kwargs."""
+
     host: str
     port: int
     db: int
@@ -57,6 +60,7 @@ class RedisConnectionKwargs(TypedDict, total=False):
     ssl_password: Optional[str]
     socket_timeout: Optional[float]
     socket_connect_timeout: Optional[float]
+
 
 class RedisSourcePipe(BasePipe[None, RedisMessage]):
     """A pipe that reads messages from Redis."""
@@ -83,15 +87,17 @@ class RedisSourcePipe(BasePipe[None, RedisMessage]):
                     "password": self.config.password,
                     "decode_responses": True,
                 }
-                
+
                 # Only add SSL-related parameters if SSL is enabled
                 if self.config.ssl:
-                    connection_kwargs.update({
-                        "ssl_ca_certs": self.config.ssl_ca_certs,
-                        "ssl_certfile": self.config.ssl_certfile,
-                        "ssl_keyfile": self.config.ssl_keyfile,
-                        "ssl_password": self.config.ssl_password,
-                    })
+                    connection_kwargs.update(
+                        {
+                            "ssl_ca_certs": self.config.ssl_ca_certs,
+                            "ssl_certfile": self.config.ssl_certfile,
+                            "ssl_keyfile": self.config.ssl_keyfile,
+                            "ssl_password": self.config.ssl_password,
+                        }
+                    )
 
                 pool = ConnectionPool(**connection_kwargs)
                 self.redis = Redis(connection_pool=pool)
@@ -174,7 +180,9 @@ class RedisSourcePipe(BasePipe[None, RedisMessage]):
                     )
 
             # Handle regular key-value operation if no special modes are configured
-            if not any([self.config.channel, self.config.stream_name, self.config.list_name]):
+            if not any(
+                [self.config.channel, self.config.stream_name, self.config.list_name]
+            ):
                 message = await self.redis.get(self.config.key)
                 if message:
                     try:
@@ -213,6 +221,7 @@ class RedisSourcePipe(BasePipe[None, RedisMessage]):
             await self.stop()
             raise RuntimeError(f"Failed to process Redis stream: {str(e)}") from e
 
+
 class RedisSinkPipe(BasePipe[RedisMessage, None]):
     """A pipe that writes messages to Redis."""
 
@@ -239,15 +248,17 @@ class RedisSinkPipe(BasePipe[RedisMessage, None]):
                     "socket_timeout": 1.0,  # 1 second timeout
                     "socket_connect_timeout": 1.0,  # 1 second connect timeout
                 }
-                
+
                 # Only add SSL-related parameters if SSL is enabled
                 if self.config.ssl:
-                    connection_kwargs.update({
-                        "ssl_ca_certs": self.config.ssl_ca_certs,
-                        "ssl_certfile": self.config.ssl_certfile,
-                        "ssl_keyfile": self.config.ssl_keyfile,
-                        "ssl_password": self.config.ssl_password,
-                    })
+                    connection_kwargs.update(
+                        {
+                            "ssl_ca_certs": self.config.ssl_ca_certs,
+                            "ssl_certfile": self.config.ssl_certfile,
+                            "ssl_keyfile": self.config.ssl_keyfile,
+                            "ssl_password": self.config.ssl_password,
+                        }
+                    )
 
                 pool = ConnectionPool(**connection_kwargs)
                 self.redis = Redis(connection_pool=pool)

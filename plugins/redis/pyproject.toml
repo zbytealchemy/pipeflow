@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "pipeflow-redis"
+version = "0.1.0"
+description = "Redis plugin for pipeflow"
+authors = ["Your Name <your.email@example.com>"]
+readme = "README.md"
+packages = [{include = "pipeflow_redis"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pipeflow = {path = "../..", develop = true}
+redis = {extras = ["hiredis"], version = "^5.0.1"}
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.3"
+pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
+mypy = "^1.7.1"
+black = "^23.11.0"
+ruff = "^0.1.6"
+types-redis = "^4.6.0.11"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.plugins."pipeflow.plugins"]
+redis = "pipeflow_redis.plugin"

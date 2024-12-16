@@ -58,7 +58,7 @@ async def main():
     # Process some data
     result = await pipeline(5)
     print(f"Pipeline: {pipeline.name}")
-    print(f"Input: 5")
+    print("Input: 5")
     print(f"Output: {result}")
 
     # Example with list processing

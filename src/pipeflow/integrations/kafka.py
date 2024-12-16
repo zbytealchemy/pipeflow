@@ -2,13 +2,12 @@
 import asyncio
 import json
 import ssl
-from typing import Any, AsyncIterator, Dict, List, Optional, Union
+from typing import Any, AsyncIterator, List, Optional, Union
 
-from kafka.errors import KafkaError  # type: ignore[import-untyped]
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from pydantic import BaseModel, ConfigDict
 
-from pipeflow.core import BasePipe, ConfigurablePipe, PipeConfig, PipeError
+from pipeflow.core import ConfigurablePipe, PipeConfig, PipeError
 
 
 class KafkaConfig(PipeConfig):
@@ -127,7 +126,10 @@ class KafkaSourcePipe(ConfigurablePipe[None, KafkaMessage, KafkaConfig]):
                         break
                     await asyncio.sleep(0.1)
                 else:
-                    raise PipeError(self, RuntimeError(f"Timeout waiting for topic {self.config.topic}"))
+                    raise PipeError(
+                        self,
+                        RuntimeError(f"Timeout waiting for topic {self.config.topic}"),
+                    )
 
             except Exception as e:
                 if self.consumer:

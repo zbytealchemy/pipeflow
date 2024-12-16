@@ -1,0 +1,42 @@
+name: 'Setup Test Services'
+description: 'Sets up required services (Redis, Kafka, etc.) for testing'
+
+inputs:
+  services:
+    description: 'Comma-separated list of services to start (redis,kafka,sqs)'
+    required: true
+    default: 'redis'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Start Redis
+      if: contains(inputs.services, 'redis')
+      shell: bash
+      run: |
+        docker run -d \
+          --name redis \
+          -p 6379:6379 \
+          redis:latest
+    
+    - name: Start Kafka
+      if: contains(inputs.services, 'kafka')
+      shell: bash
+      run: |
+        docker-compose -f .github/compose/kafka.yml up -d
+    
+    - name: Start LocalStack (SQS)
+      if: contains(inputs.services, 'sqs')
+      shell: bash
+      run: |
+        docker run -d \
+          --name localstack \
+          -p 4566:4566 \
+          -e SERVICES=sqs \
+          -e AWS_DEFAULT_REGION=us-east-1 \
+          -e EDGE_PORT=4566 \
+          localstack/localstack:latest
+    
+    - name: Wait for services
+      shell: bash
+      run: sleep 10  # Give services time to start

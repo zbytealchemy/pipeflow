@@ -1,9 +1,8 @@
 """Example of basic data transformation using Pipeflow."""
 import asyncio
-from typing import Any, List
+from typing import Dict, List
 
-import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 
 from pipeflow.core import ConfigurablePipe, PipeConfig
 

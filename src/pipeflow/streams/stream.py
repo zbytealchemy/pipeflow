@@ -16,9 +16,9 @@ from typing import (
     cast,
 )
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
-from pipeflow.core import BasePipe, PipeConfig, PipeError
+from pipeflow.core import BasePipe, PipeError
 from pipeflow.monitoring.metrics import MetricsCollector
 
 logger = logging.getLogger(__name__)
@@ -36,11 +36,46 @@ class StreamConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     name: Optional[str] = None
-    retry_attempts: int = 3  # Default to 3 retries
-    retry_delay: float = 1.0  # Default to 1 second delay
+    retry_attempts: int = 3
+    retry_delay: float = 1.0
     timeout: float = 30.0  # Default to 30 seconds timeout
-    batch_size: int = 1  # Default to no batching
-    window_size: timedelta = timedelta(minutes=0)  # Default to no windowing
+    batch_size: int = 1  # default to 1
+    window_size: timedelta = timedelta(minutes=0)
+
+    @field_validator("batch_size", mode="before")
+    def set_default_batch_size(cls, value):
+        if value is None:
+            return 1
+        if not isinstance(value, int) or value < 1:
+            raise ValueError(
+                "batch_size must be an integer greater than or equal to 1."
+            )
+        return value
+
+    @field_validator("window_size", mode="before")
+    def convert_window_size(cls, value):
+        if isinstance(value, (int, float)):  # If float or int, interpret as seconds
+            if value < 0:
+                raise ValueError("window_size must be greater than or equal to 0.")
+            return timedelta(minutes=value)
+        if isinstance(value, timedelta):
+            if value < timedelta(minutes=0):
+                raise ValueError("window_size must be greater than or equal to 0.")
+            return value
+        raise ValueError("window_size must be a float or a timedelta.")
+
+    @model_validator(mode="after")
+    def validate_model(cls, values):
+        # Ensure all fields are properly validated
+        batch_size = values.batch_size
+        window_size = values.window_size
+        if batch_size is None or batch_size < 1:
+            raise ValueError(
+                "batch_size must be an integer greater than or equal to 1."
+            )
+        if not isinstance(window_size, timedelta) or window_size < timedelta(seconds=0):
+            raise ValueError("window_size must be a positive timedelta.")
+        return values
 
 
 def get_stream_config_defaults() -> StreamConfig:
@@ -182,17 +217,15 @@ class Stream(Generic[T]):
             Processed windows
         """
         window: List[T] = []
-        window_start = time.time()
+        window_start = asyncio.get_event_loop().time()
 
         async for item in self.source:
-            current_time = time.time()
-            if (
-                current_time - window_start >= self.config.window_size.total_seconds()
-                and window
-            ):
-                result = await pipe(window)
-                yield result
-                window = []
+            current_time = asyncio.get_event_loop().time()
+            if current_time - window_start >= self.config.window_size.total_seconds():
+                if window:
+                    result = await pipe(window)
+                    yield result
+                    window = []
                 window_start = current_time
             window.append(item)
 
