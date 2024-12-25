@@ -56,7 +56,8 @@ publish:  ## Publish package to PyPI
 	poetry publish
 
 docker-test:  ## Run tests in Docker
-	docker compose run --rm pipeflow pytest tests/
+	docker compose -f docker-compose.test.yml build --no-cache
+	docker compose -f docker-compose.test.yml run --rm test
 
 docker-up:  ## Start all Docker services for integration tests
 	docker compose up -d localstack kafka redis

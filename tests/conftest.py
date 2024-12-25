@@ -5,7 +5,7 @@ import warnings
 from typing import Any, AsyncGenerator, Callable, Generator, List, Optional
 
 import aio_pika
-import boto3
+import aioboto3
 import pytest
 from aiokafka import AIOKafkaProducer
 from pydantic import ConfigDict
@@ -63,18 +63,32 @@ async def kafka_producer() -> AsyncGenerator[AIOKafkaProducer, None]:
     await producer.stop()
 
 
+# @pytest.fixture
+# def aws_sqs_client() -> Generator[boto3.client, None, None]:
+#     """Create a LocalStack SQS client for testing."""
+#     endpoint_url = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
+#     client = boto3.client(
+#         "sqs",
+#         endpoint_url=endpoint_url,
+#         region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
+#         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
+#         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+#     )
+#     yield client
+
 @pytest.fixture
-def aws_sqs_client() -> Generator[boto3.client, None, None]:
+async def aws_sqs_client() -> AsyncGenerator[aioboto3.Session.client, None]:
     """Create a LocalStack SQS client for testing."""
     endpoint_url = os.getenv("AWS_ENDPOINT_URL", "http://localhost:4566")
-    client = boto3.client(
+    session = aioboto3.Session()
+    async with session.client(
         "sqs",
         endpoint_url=endpoint_url,
         region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
         aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID", "test"),
         aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
-    )
-    yield client
+    ) as client:
+        yield client
 
 
 class MockPipe(BasePipe[Any, Any]):

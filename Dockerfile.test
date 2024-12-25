@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -11,10 +11,17 @@ RUN pip install poetry==1.5.1
 COPY pyproject.toml poetry.lock ./
 
 RUN poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root
+    && poetry install --no-interaction --no-ansi --no-root --all-extras
 
 COPY . .
 
-RUN poetry install --no-interaction --no-ansi
+RUN poetry install --no-interaction --no-ansi --all-extras
 
-CMD ["poetry", "run", "pytest", "tests/", "-v"]
+# Add these lines to help diagnose the issue
+RUN poetry run pip list
+RUN poetry show
+RUN poetry run python -c "import sys; print(sys.path)"
+RUN poetry run python -c "import aio_pika; print(aio_pika.__file__)"
+
+# Change the CMD to run pytest with verbose output and show the import error traceback
+CMD ["poetry", "run", "pytest", "tests/", "-v", "--tb=short"]

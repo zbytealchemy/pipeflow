@@ -1,20 +1,26 @@
+# Use Python 3.10 slim image
 FROM python:3.10-slim
 
+# Set the working directory in the container
 WORKDIR /app
 
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH="/root/.local/bin:$PATH"
+# Install poetry
+RUN pip install poetry==1.5.1
 
+# Copy only the pyproject.toml and poetry.lock files
 COPY pyproject.toml poetry.lock ./
-COPY src ./src
-COPY tests ./tests
 
+# Install project dependencies
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi
 
-ENTRYPOINT ["poetry", "run", "pytest"]
+# Copy the rest of the application's code
+COPY . .
+
+# Command to run tests
+CMD ["poetry", "run", "pytest", "tests/"]
